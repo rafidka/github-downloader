@@ -1,0 +1,31 @@
+{
+  "name": "github-downloader",
+  "version": "0.1.0",
+  "description": "A tool for downloading a large number of repositories from GitHub",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "tsc --build --clean",
+    "main": "ts-node src/main.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rafidka/github-downloader.git"
+  },
+  "keywords": [
+    "github",
+    "downloader"
+  ],
+  "author": "Rafid Al-Humaimidi",
+  "license": "Unlicense",
+  "bugs": {
+    "url": "https://github.com/rafidka/github-downloader/issues"
+  },
+  "homepage": "https://github.com/rafidka/github-downloader#readme",
+  "devDependencies": {
+    "@tsconfig/recommended": "^1.0.1",
+    "ts-node": "^10.7.0",
+    "typescript": "^4.6.3"
+  }
+}
