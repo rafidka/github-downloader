@@ -1,10 +1,16 @@
 {
   "files.exclude": {
-    "**/.git": true,
     "**/.DS_Store": true,
-    "**/Thumbs.db": true
+    "**/.git": true,
+    "**/Thumbs.db": true,
+    "**/dist": true,
+    "**/node_modules": true
   },
   "search.exclude": {
+    "**/.DS_Store": true,
+    "**/.git": true,
+    "**/Thumbs.db": true,
+    "**/dist": true,
     "**/node_modules": true
   }
 }
