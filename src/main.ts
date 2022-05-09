@@ -105,7 +105,7 @@ async function cloneRepo(
   },
   reposDir: string,
   language: Language
-) {
+): Promise<void> {
   // Execute a `git clone` on the repository. We clone the repo in a
   // sub-directory with the name of the repository under the given repository
   // directory.
@@ -126,18 +126,29 @@ async function cloneRepo(
   console.log(`[lang: ${language}] Cloning ${repo.name}...`);
 
   // To reduce download time, we clone with the `--depth` flag set to 1.
-  await execAsync(`git clone --depth 1 ${html_url} ${cloneDir}`);
+  try {
+    await execAsync(`git clone --depth 1 ${html_url} ${cloneDir}`);
+  } catch (err) {
+    console.error(`Failed to clone ${repo.name}: ${err}`);
+    return;
+  }
 
   // Find the extension of the programming language of the repository.
   const fileExtension = LANGUAGE_FILE_EXTENSION_MAP[language];
 
-  // Execute a bash command to delete all files in the repository that are not code files.
-  await execAsync(
-    `find ${cloneDir} -type f -not -name "*.${fileExtension}" -delete`
-  );
+  try {
+    // Execute a bash command to delete all files in the repository that are not code files.
+    await execAsync(
+      `find1 ${cloneDir} -type f -not -name "*.${fileExtension}" -delete`
+    );
 
-  // Execute a bash command to delete all empty directories in the repository.
-  await execAsync(`find ${cloneDir} -type d -empty -delete`);
+    // Execute a bash command to delete all empty directories in the repository.
+    await execAsync(`find ${cloneDir} -type d -empty -delete`);
+  } catch (err) {
+    console.warn(`Failed to clean up ${repo.name}: ${err}
+Notice that the repository was successfully cloned, but it will likely contain other files that are not ${language} code files. You can delete these files manually.
+`);
+  }
 }
 
 async function main() {
