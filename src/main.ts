@@ -72,6 +72,7 @@ async function searchRepos(
   sort: "stars" | "forks" = "forks",
   order: "asc" | "desc" = "desc"
 ) {
+  console.log(`Searching for ${language} repos (sorted ${order} by ${sort})...`);
   const {
     data: { items },
   } = await octokit.rest.search.repos({
@@ -79,6 +80,10 @@ async function searchRepos(
     per_page: maxRepoCount,
     sort,
     order,
+  });
+  console.log(`Found ${items.length} ${language} repos:`);
+  items.forEach((repo) => {
+    console.log(`- ${repo.full_name}`);
   });
 
   return items;
@@ -142,14 +147,13 @@ async function main() {
       "repos-dir": {
         type: "string",
         require: true,
-        default: "repos",
       },
     })
     .parseSync();
 
   const { reposDir } = argv;
   const repoLists = await Promise.all(
-    LANGUAGES.map((language) => searchRepos(language, 10, "forks", "desc"))
+    LANGUAGES.map((language) => searchRepos(language, 5, "forks", "asc"))
   );
 
   // Create the `repos` directory if it doesn't exist.
