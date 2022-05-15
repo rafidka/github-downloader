@@ -148,7 +148,7 @@ async function cloneRepo(
   try {
     // Execute a bash command to delete all files in the repository that are not code files.
     await execAsync(
-      `find1 ${cloneDir} -type f -not -name "*.${fileExtension}" -delete`
+      `find ${cloneDir} -type f -not -name "*.${fileExtension}" -delete`
     );
 
     // Execute a bash command to delete all empty directories in the repository.
