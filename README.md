@@ -1,4 +1,6 @@
 # github-downloader
+
+# Overview
 A tool for downloading a large number of repositories from GitHub.
 
 I wrote this tool as I would like to train an ML model on source code. GitHub
@@ -9,13 +11,18 @@ You might wonder why not just execute a `git clone` command on the repositories 
 There are multiple reasons actually:
 
 - I would like to download the top repositories (by star or fork count), which
-requires a call to GitHub APIs.
+requires a call to GitHub API.
 
 - Making a large number of `git clone` requests can potentially cause
 throttling, hence a retry mechanism is required.
 
-- For model training, one only needs the source files, so other files need to be
-cleaned to avoid a considerable unnecessary space waste.
+- If the execution breaks midway for any reason, re-executing it will skip the
+repositories that were already downloaded.
+
+- For model training, one only needs the source files, so other files, e.g.
+images, binaries, documentation, etc., need to be cleaned to avoid a
+considerable unnecessary space waste. This scripts does this automatically on
+each repository after cloning.
 
 - Doing a `git clone` clones the entire history by default. Again, this is a
 huge unnecessary space waste, especially with top repositories which have a
@@ -23,7 +30,8 @@ large number of contributors and thus the history is likely huge.
 
 ## Usage
 
-After cloning the repository locally, make sure to install the required npm packages using
+After cloning this repository locally, make sure to install the required npm
+packages using:
 
 ```shell
 npm install
@@ -35,8 +43,9 @@ Then, execute the following command to show the help message:
 npm run main
 ```
 
-For example, the following will download the top repository (by number of forks) from each
-of the programming languages that this tool currently support (check help message for a list):
+For example, the following will download the top repositories (by number of
+forks) from each of the programming languages that this tool currently support
+(check help message for a list):
 
 ```shell
 npm run main -- --repos-dir /home/rafid/WorkspaceData/repos --max-repo-count 1
