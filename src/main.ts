@@ -56,6 +56,12 @@ const LANGUAGE_FILE_EXTENSION_MAP = {
   ts: "ts",
 } as const;
 
+const SortOptions = ["stars", "forks"] as const;
+type Sort = typeof SortOptions[number];
+
+const OrderOptions = ["asc", "desc"] as const;
+type Order = typeof OrderOptions[number];
+
 /**
  * Retrieves a list of repositories for a given language, sorted by the number
  * of stars or forks depending on the `sort` parameter.
@@ -70,10 +76,12 @@ const LANGUAGE_FILE_EXTENSION_MAP = {
 async function searchRepos(
   language: Language,
   maxRepoCount: number,
-  sort: "stars" | "forks" = "forks",
-  order: "asc" | "desc" = "desc"
+  sort: Sort = "forks",
+  order: Order = "desc"
 ) {
-  logger.info(`Searching for ${language} repos (sorted ${order} by ${sort})...`);
+  logger.info(
+    `Searching for ${language} repos (sorted ${order} by ${sort})...`
+  );
   const {
     data: { items },
   } = await octokit.rest.search.repos({
@@ -159,13 +167,45 @@ async function main() {
       "repos-dir": {
         type: "string",
         require: true,
+        describe: "The directory to clone repositories to",
+      },
+      languages: {
+        array: true,
+        require: true,
+        describe: "The programming languages to download repositories for",
+        default: LANGUAGES,
+        choices: LANGUAGES,
+      },
+      "max-repo-count": {
+        type: "number",
+        require: true,
+        describe:
+          "The maximum number of repositories per programming language to download",
+      },
+      sort: {
+        require: true,
+        default: "forks" as Sort,
+        describe: "The field to sort the repos by",
+        choices: SortOptions,
+      },
+      order: {
+        require: true,
+        default: "desc" as Order,
+        describe: "Whether to sort ascendingly or descendingly",
+        choices: OrderOptions,
       },
     })
     .parseSync();
 
-  const { reposDir } = argv;
+  const { reposDir, languages, maxRepoCount, sort, order } = argv;
   const repoLists = await Promise.all(
-    LANGUAGES.map((language) => searchRepos(language, 5, "forks", "asc"))
+    LANGUAGES.map((language) => {
+      // Ensure that language is one of LANGUAGES.
+      if (!languages.includes(language)) {
+        throw new Error(`Invalid language: ${language}`);
+      }
+      return searchRepos(language, maxRepoCount, sort, order);
+    })
   );
 
   // Create the `repos` directory if it doesn't exist.
@@ -178,6 +218,8 @@ async function main() {
     const language = LANGUAGES[idx];
     for (const repo of repoList) {
       if (!repo.owner) {
+        // The purpose of this check is mainly to prevent a TypeScript compiler error; I don't
+        // know why a repository would not have an owner.
         logger.info(`Skipping ${repo.name} as it is not owned by a user.`);
         continue;
       }
@@ -186,4 +228,9 @@ async function main() {
   });
 }
 
-main().then();
+main()
+  .then()
+  .catch((err) => {
+    logger.error(err);
+    process.exit(1);
+  });
