@@ -4,6 +4,7 @@ import { promisify } from "util";
 import * as fs from "fs";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
+import { logger } from "./config";
 
 const execAsync = promisify(exec);
 
@@ -72,7 +73,7 @@ async function searchRepos(
   sort: "stars" | "forks" = "forks",
   order: "asc" | "desc" = "desc"
 ) {
-  console.log(`Searching for ${language} repos (sorted ${order} by ${sort})...`);
+  logger.info(`Searching for ${language} repos (sorted ${order} by ${sort})...`);
   const {
     data: { items },
   } = await octokit.rest.search.repos({
@@ -81,9 +82,9 @@ async function searchRepos(
     sort,
     order,
   });
-  console.log(`Found ${items.length} ${language} repos:`);
+  logger.info(`Found ${items.length} ${language} repos:`);
   items.forEach((repo) => {
-    console.log(`- ${repo.full_name}`);
+    logger.info(`- ${repo.full_name}`);
   });
 
   return items;
@@ -119,17 +120,17 @@ async function cloneRepo(
   // Cloning repositories is slow, so we only do it if the repository
   // doesn't already exist.
   if (fs.existsSync(cloneDir)) {
-    console.log(`Skipping ${ownerLogin}/${name} as it is already cloned.`);
+    logger.info(`Skipping ${ownerLogin}/${name} as it is already cloned.`);
     return;
   }
 
-  console.log(`[lang: ${language}] Cloning ${repo.name}...`);
+  logger.info(`[lang: ${language}] Cloning ${repo.name}...`);
 
   // To reduce download time, we clone with the `--depth` flag set to 1.
   try {
     await execAsync(`git clone --depth 1 ${html_url} ${cloneDir}`);
   } catch (err) {
-    console.error(`Failed to clone ${repo.name}: ${err}`);
+    logger.error(`Failed to clone ${repo.name}: ${err}`);
     return;
   }
 
@@ -145,7 +146,7 @@ async function cloneRepo(
     // Execute a bash command to delete all empty directories in the repository.
     await execAsync(`find ${cloneDir} -type d -empty -delete`);
   } catch (err) {
-    console.warn(`Failed to clean up ${repo.name}: ${err}
+    logger.warn(`Failed to clean up ${repo.name}: ${err}
 Notice that the repository was successfully cloned, but it will likely contain other files that are not ${language} code files. You can delete these files manually.
 `);
   }
@@ -169,7 +170,7 @@ async function main() {
 
   // Create the `repos` directory if it doesn't exist.
   if (!fs.existsSync(reposDir)) {
-    console.log(`Creating repos directory ${reposDir} ...`);
+    logger.info(`Creating repos directory ${reposDir} ...`);
     fs.mkdirSync(reposDir);
   }
 
@@ -177,7 +178,7 @@ async function main() {
     const language = LANGUAGES[idx];
     for (const repo of repoList) {
       if (!repo.owner) {
-        console.log(`Skipping ${repo.name} as it is not owned by a user.`);
+        logger.info(`Skipping ${repo.name} as it is not owned by a user.`);
         continue;
       }
       cloneRepo(repo as any, reposDir, language);
