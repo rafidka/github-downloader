@@ -115,6 +115,7 @@ info: [lang: ts] Cloning ant-design...
 # License
 
 Luckily, the world doesn't revolve around me. As such, unless there is a strong
-reason not to, I usually publish my code under The Unlicense, meaning that
-anyone is free to make use of this code however they like. This repository is no
-exception. See [LICENSE](LICENSE).
+reason not to, I usually publish my code under [The
+Unlicense](https://unlicense.org/), meaning that anyone is free to make use of
+this code however they like. This repository is no exception. See
+[LICENSE](LICENSE).
