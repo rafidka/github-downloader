@@ -280,6 +280,7 @@ async function main() {
   clonedReposBar.stop();
   multiProgressBar.stop();
 
+  console.log('');
   console.log('Done. Please check the log files for any warnings or errors.');
 }
 
