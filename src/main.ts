@@ -5,6 +5,7 @@ import * as fs from "fs";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { logger } from "./config";
+import * as cliProgress from "cli-progress";
 
 const execAsync = promisify(exec);
 
@@ -160,7 +161,13 @@ Notice that the repository was successfully cloned, but it will likely contain o
   }
 }
 
-async function main() {
+function parseArgs(): {
+  reposDir: string;
+  languages: Readonly<Language[]>;
+  maxRepoCount: number;
+  sort: Sort;
+  order: Order;
+} {
   // Create yargs with a parameter for the repository directory.
   const argv = yargs(hideBin(process.argv))
     .options({
@@ -197,7 +204,13 @@ async function main() {
     })
     .parseSync();
 
-  const { reposDir, languages, maxRepoCount, sort, order } = argv;
+  return argv;
+}
+
+async function main() {
+  const { reposDir, languages, maxRepoCount, sort, order } = parseArgs();
+
+  // Search for the repositories to clone.
   const repoLists = await Promise.all(
     LANGUAGES.map((language) => {
       // Ensure that language is one of LANGUAGES.
@@ -214,18 +227,60 @@ async function main() {
     fs.mkdirSync(reposDir);
   }
 
+  // Calculate the total number of repositories to download.
+  const totalRepoCount = repoLists.reduce((acc, list) => acc + list.length, 0);
+
+  // Create progress bars to show the progress of the process.
+  const multiProgressBar = new cliProgress.MultiBar({});
+  const clonedReposBar = multiProgressBar.create(
+    totalRepoCount,
+    0,
+    {},
+    {
+      format: `Cloned repos: [{bar}] {percentage}% | {value}/{total}`,
+    }
+  );
+  const failedReposBar = multiProgressBar.create(
+    totalRepoCount,
+    0,
+    {},
+    {
+      format: `Failed repos: [{bar}] {percentage}% | {value}/{total}`,
+    }
+  );
+
+  const promises: Promise<void>[] = [];
   repoLists.forEach((repoList, idx) => {
     const language = LANGUAGES[idx];
     for (const repo of repoList) {
       if (!repo.owner) {
         // The purpose of this check is mainly to prevent a TypeScript compiler error; I don't
         // know why a repository would not have an owner.
-        logger.info(`Skipping ${repo.name} as it is not owned by a user.`);
+        logger.warn(`Skipping ${repo.name} as it is not owned by a user.`);
+        clonedReposBar.increment();
         continue;
       }
-      cloneRepo(repo as any, reposDir, language);
+
+      promises.push(
+        cloneRepo(repo as any, reposDir, language)
+          .then(() => {
+            clonedReposBar.increment();
+          })
+          .catch(() => {
+            failedReposBar.increment();
+          })
+      );
     }
   });
+
+  // Wait for all promises to finish.
+  await Promise.all(promises);
+
+  // Stop progress bars.
+  clonedReposBar.stop();
+  multiProgressBar.stop();
+
+  console.log('Done. Please check the log files for any warnings or errors.');
 }
 
 main()
