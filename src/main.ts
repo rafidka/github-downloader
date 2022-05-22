@@ -4,7 +4,12 @@ import { promisify } from "util";
 import * as fs from "fs";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
-import { logger } from "./config";
+import {
+  disableConsoleLogging,
+  enableConsoleLogging,
+  logger,
+  setLogLevel,
+} from "./config";
 import * as cliProgress from "cli-progress";
 
 const execAsync = promisify(exec);
@@ -63,6 +68,8 @@ type Sort = typeof SortOptions[number];
 const OrderOptions = ["asc", "desc"] as const;
 type Order = typeof OrderOptions[number];
 
+const GITHUB_SEARCH_MAX_PAGE_SIZE = 100;
+
 /**
  * Retrieves a list of repositories for a given language, sorted by the number
  * of stars or forks depending on the `sort` parameter.
@@ -80,23 +87,41 @@ async function searchRepos(
   sort: Sort = "forks",
   order: Order = "desc"
 ) {
+  const pageSize = Math.min(maxRepoCount, GITHUB_SEARCH_MAX_PAGE_SIZE);
+  const pageCount = Math.ceil(maxRepoCount / pageSize);
+
   logger.info(
     `Searching for ${language} repos (sorted ${order} by ${sort})...`
   );
-  const {
-    data: { items },
-  } = await octokit.rest.search.repos({
-    q: `language:${language}`,
-    per_page: maxRepoCount,
-    sort,
-    order,
-  });
-  logger.info(`Found ${items.length} ${language} repos:`);
-  items.forEach((repo) => {
+  if (pageCount > 1) {
+    logger.info(
+      `${pageCount} requests are required to retrieve ${maxRepoCount} repos.`
+    );
+  }
+
+  // Paginated requests to retrieve the desired number of repos.
+  const itemsFromAllPages = [];
+  for (let page = 1; page <= pageCount; page++) {
+    logger.debug(
+      `Searching for ${language} repos (sorted ${order} by ${sort}) - Page ${page}...`
+    );
+    const {
+      data: { items },
+    } = await octokit.rest.search.repos({
+      q: `language:${language}`,
+      per_page: maxRepoCount,
+      sort,
+      order,
+    });
+    itemsFromAllPages.push(...items);
+  }
+
+  logger.info(`Found ${itemsFromAllPages.length} ${language} repos:`);
+  itemsFromAllPages.forEach((repo) => {
     logger.info(`- ${repo.full_name}`);
   });
 
-  return items;
+  return itemsFromAllPages;
 }
 
 /**
@@ -162,6 +187,8 @@ Notice that the repository was successfully cloned, but it will likely contain o
 }
 
 function parseArgs(): {
+  dryRun: boolean;
+  verbose: boolean;
   reposDir: string;
   languages: Readonly<Language[]>;
   maxRepoCount: number;
@@ -171,6 +198,21 @@ function parseArgs(): {
   // Create yargs with a parameter for the repository directory.
   const argv = yargs(hideBin(process.argv))
     .options({
+      "dry-run": {
+        type: "boolean",
+        default: true,
+        require: true,
+        describe:
+          "Doesn't actually clone repositories, but prints the lists of " +
+          "repositories that would be clone in non-dry run mode.",
+      },
+      verbose: {
+        type: "boolean",
+        default: false,
+        require: true,
+        describe:
+          "Whether to print extra logs during execution. This can be noisy.",
+      },
       "repos-dir": {
         type: "string",
         require: true,
@@ -208,18 +250,59 @@ function parseArgs(): {
 }
 
 async function main() {
-  const { reposDir, languages, maxRepoCount, sort, order } = parseArgs();
+  const { dryRun, verbose, reposDir, languages, maxRepoCount, sort, order } =
+    parseArgs();
+
+  if (verbose) {
+    console.log('Verbose mode requested. Setting log level to "debug".');
+    setLogLevel("debug");
+  } else {
+    setLogLevel("info");
+  }
 
   // Search for the repositories to clone.
+  logger.info("Searching for repositories...");
+  if (!verbose && maxRepoCount > GITHUB_SEARCH_MAX_PAGE_SIZE) {
+    // When maxRepoCount is greater than maxPageSize, we need to make multiple
+    // requests to GitHub to get the desired number of repos. Thus, we print a
+    logger.warn(`You requested more than ${GITHUB_SEARCH_MAX_PAGE_SIZE}
+repositories, meaning that we will have to make paginated requests to the GitHub
+API to get the desired number of repositories. If you would like to see messages
+for each paginated request made to see the progress, consider using the
+--verbose flag.`);
+  }
   const repoLists = await Promise.all(
-    LANGUAGES.filter((l) => languages.includes(l)).map((l) => {
-      return searchRepos(l, maxRepoCount, sort, order);
-    })
+    languages.map((l) => searchRepos(l, maxRepoCount, sort, order))
   );
+
+  if (dryRun) {
+    logger.warn("Dry run mode enabled. No repositories will be cloned.");
+    logger.warn(
+      "If run in non-dry run mode, the following repositories will be cloned:"
+    );
+    repoLists.forEach((repoList, idx) => {
+      const language = languages[idx];
+      for (const repo of repoList) {
+        if (!repo.owner) {
+          // The purpose of this check is mainly to prevent a TypeScript
+          // compiler error; I don't know why the 'owner' field is optional as
+          // it seems to me all repositories must have owners.
+          logger.warn(`Skipping ${repo.name} as it is not owned by a user.`);
+          continue;
+        }
+        console.log(`[lang: ${language}] - ${repo.full_name}`);
+      }
+    });
+
+    console.log(
+      'To clone the repositories, run again with "--dry-run" set to false.'
+    );
+    return;
+  }
 
   // Create the `repos` directory if it doesn't exist.
   if (!fs.existsSync(reposDir)) {
-    logger.info(`Creating repos directory ${reposDir} ...`);
+    logger.info(`Creating repos directory ${reposDir}...`);
     fs.mkdirSync(reposDir);
   }
 
@@ -245,13 +328,16 @@ async function main() {
     }
   );
 
+  // Disable console logging to avoid breaking the progress bars.
+  disableConsoleLogging();
+
   const promises: Promise<void>[] = [];
   repoLists.forEach((repoList, idx) => {
-    const language = LANGUAGES[idx];
+    const language = languages[idx];
     for (const repo of repoList) {
       if (!repo.owner) {
-        // The purpose of this check is mainly to prevent a TypeScript compiler error; I don't
-        // know why a repository would not have an owner.
+        // The purpose of this check is mainly to prevent a TypeScript compiler
+        // error; I don't know why a repository would not have an owner.
         logger.warn(`Skipping ${repo.name} as it is not owned by a user.`);
         clonedReposBar.increment();
         continue;
@@ -276,8 +362,11 @@ async function main() {
   clonedReposBar.stop();
   multiProgressBar.stop();
 
-  console.log("");
-  console.log("Done. Please check the log files for any warnings or errors.");
+  // Re-enable console logging.
+  enableConsoleLogging();
+
+  logger.info("");
+  logger.info("Done. Please check the log files for any warnings or errors.");
 }
 
 main()
