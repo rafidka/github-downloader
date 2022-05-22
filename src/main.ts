@@ -212,12 +212,8 @@ async function main() {
 
   // Search for the repositories to clone.
   const repoLists = await Promise.all(
-    LANGUAGES.map((language) => {
-      // Ensure that language is one of LANGUAGES.
-      if (!languages.includes(language)) {
-        throw new Error(`Invalid language: ${language}`);
-      }
-      return searchRepos(language, maxRepoCount, sort, order);
+    LANGUAGES.filter((l) => languages.includes(l)).map((l) => {
+      return searchRepos(l, maxRepoCount, sort, order);
     })
   );
 
@@ -280,8 +276,8 @@ async function main() {
   clonedReposBar.stop();
   multiProgressBar.stop();
 
-  console.log('');
-  console.log('Done. Please check the log files for any warnings or errors.');
+  console.log("");
+  console.log("Done. Please check the log files for any warnings or errors.");
 }
 
 main()
