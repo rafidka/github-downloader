@@ -109,7 +109,8 @@ async function searchRepos(
       data: { items },
     } = await octokit.rest.search.repos({
       q: `language:${language}`,
-      per_page: maxRepoCount,
+      per_page: pageSize,
+      page,
       sort,
       order,
     });
