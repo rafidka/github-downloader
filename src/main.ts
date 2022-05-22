@@ -139,7 +139,8 @@ async function cloneRepo(
     html_url: string;
   },
   reposDir: string,
-  language: Language
+  language: Language,
+  keepOnlyMainLanguage: boolean
 ): Promise<void> {
   // Execute a `git clone` on the repository. We clone the repo in a
   // sub-directory with the name of the repository under the given repository
@@ -168,14 +169,22 @@ async function cloneRepo(
     return;
   }
 
-  // Find the extension of the programming language of the repository.
-  const fileExtension = LANGUAGE_FILE_EXTENSION_MAP[language];
+  // Finds the extensions of the languages that we would like to keep.
+  const languagesToKeep = keepOnlyMainLanguage ? [language] : LANGUAGES;
+  const extsToKeep = languagesToKeep.map(
+    (lang) => LANGUAGE_FILE_EXTENSION_MAP[lang]
+  );
+
+  // Builds `find` utility arguments to exclude the files with the extensions
+  // extensions we want to keep.
+  const extsToKeepFlags = extsToKeep
+    .map((ext) => `-not -name "*.${ext}"`)
+    .join(" ");
 
   try {
-    // Execute a bash command to delete all files in the repository that are not code files.
-    await execAsync(
-      `find ${cloneDir} -type f -not -name "*.${fileExtension}" -delete`
-    );
+    // Execute a bash command to delete all files in the repository that are not
+    // code files.
+    await execAsync(`find ${cloneDir} -type f ${extsToKeepFlags} -delete`);
 
     // Execute a bash command to delete all empty directories in the repository.
     await execAsync(`find ${cloneDir} -type d -empty -delete`);
@@ -191,6 +200,7 @@ function parseArgs(): {
   verbose: boolean;
   reposDir: string;
   languages: Readonly<Language[]>;
+  keepOnlyMainLanguage: boolean;
   maxRepoCount: number;
   sort: Sort;
   order: Order;
@@ -225,6 +235,17 @@ function parseArgs(): {
         default: LANGUAGES,
         choices: LANGUAGES,
       },
+      "keep-only-main-language": {
+        type: "boolean",
+        require: true,
+        describe: `Repositories rarely contain only one language. If this flag
+is set, only the code files of the main language of the repository will be kept.
+If it is not set, all code files of the repository will be kept. For example,
+while the Linux repository contains mainly C code, it also has code in Python,
+Perl, etc. If this flag is set to true, only C files will be left; if it is set
+to false, other code files that this tool supports will be kept.`.trim(),
+        default: false,
+      },
       "max-repo-count": {
         type: "number",
         require: true,
@@ -250,8 +271,16 @@ function parseArgs(): {
 }
 
 async function main() {
-  const { dryRun, verbose, reposDir, languages, maxRepoCount, sort, order } =
-    parseArgs();
+  const {
+    dryRun,
+    verbose,
+    reposDir,
+    languages,
+    keepOnlyMainLanguage,
+    maxRepoCount,
+    sort,
+    order,
+  } = parseArgs();
 
   if (verbose) {
     console.log('Verbose mode requested. Setting log level to "debug".');
@@ -344,7 +373,7 @@ for each paginated request made to see the progress, consider using the
       }
 
       promises.push(
-        cloneRepo(repo as any, reposDir, language)
+        cloneRepo(repo as any, reposDir, language, keepOnlyMainLanguage)
           .then(() => {
             clonedReposBar.increment();
           })
