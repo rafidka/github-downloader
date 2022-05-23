@@ -123,9 +123,19 @@ async function searchRepos(
 
 /**
  * Clones a repository to the given directory.
+ *
+ * This function is not simply a wrapper around `git clone`, but also cleans
+ * non-code files from the repository after cloning. The list of programming
+ * languages to consider is specified by the {@link languagesToKeep} parameter.
+ *
+ * Notice that in addition to keeping the code files, this function also keeps
+ * the README and LICENSE files.
+ *
  * @param repo The repository to clone.
  * @param reposDir The directory to clone the repository to.
  * @param language The programming language of the repository.
+ * @param languagesToKeep An array containing the programming languages to keep
+ * after cloning the repository during the clean up phase.
  */
 async function cloneRepo(
   repo: {
@@ -137,7 +147,7 @@ async function cloneRepo(
   },
   reposDir: string,
   language: Language,
-  keepOnlyMainLanguage: boolean
+  languagesToKeep: Readonly<Language[]>
 ): Promise<void> {
   // Execute a `git clone` on the repository. We clone the repo in a
   // sub-directory with the name of the repository under the given repository
@@ -167,7 +177,6 @@ async function cloneRepo(
   }
 
   // Finds the extensions of the languages that we would like to keep.
-  const languagesToKeep = keepOnlyMainLanguage ? [language] : LANGUAGES;
   const extsToKeep = languagesToKeep.map(
     (lang) => LANGUAGE_FILE_EXTENSION_MAP[lang]
   );
@@ -178,21 +187,29 @@ async function cloneRepo(
     .map((ext) => `-not -name "*.${ext}"`)
     .join(" ");
 
-  // Builds `find` utility arguments to exclude license files.
+  // Builds `find` utility arguments to exclude LICENSE files.
   const licenseFileFlags = `-not -iname "LICENSE*" -not -iname "COPYING"`;
+
+  // Builds `find` utility arguments to exclude README files.
+  const readmeFileFlags = `-not -iname "README*"`;
 
   try {
     // Execute a bash command to delete all files in the repository that are not
-    // code files.
+    // code or license files.
     await execAsync(
-      `find ${cloneDir} -type f ${extsToKeepFlags} ${licenseFileFlags} -delete`
+      `find ${cloneDir} -type f ` +
+        `${extsToKeepFlags} ` + // Keep code files.
+        `${licenseFileFlags} ` + // Keep LICENSE files.
+        `${readmeFileFlags} ` + // Keep README files.
+        `-delete` // Delete all other files.
     );
 
     // Execute a bash command to delete all empty directories in the repository.
     await execAsync(`find ${cloneDir} -type d -empty -delete`);
   } catch (err) {
     logger.warn(`Failed to clean up ${repo.name}: ${err}
-Notice that the repository was successfully cloned, but it will likely contain other files that are not ${language} code files. You can delete these files manually.
+Notice that the repository was successfully cloned, but it will likely contain
+other files that are not code files. You can delete these files manually.
 `);
   }
 }
@@ -374,8 +391,9 @@ for each paginated request made to see the progress, consider using the
         continue;
       }
 
+      const languagesToKeep = keepOnlyMainLanguage ? [language] : languages;
       promises.push(
-        cloneRepo(repo as any, reposDir, language, keepOnlyMainLanguage)
+        cloneRepo(repo as any, reposDir, language, languagesToKeep)
           .then(() => {
             clonedReposBar.increment();
           })
