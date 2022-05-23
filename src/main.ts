@@ -178,10 +178,15 @@ async function cloneRepo(
     .map((ext) => `-not -name "*.${ext}"`)
     .join(" ");
 
+  // Builds `find` utility arguments to exclude license files.
+  const licenseFileFlags = `-not -iname "LICENSE*" -not -iname "COPYING"`;
+
   try {
     // Execute a bash command to delete all files in the repository that are not
     // code files.
-    await execAsync(`find ${cloneDir} -type f ${extsToKeepFlags} -delete`);
+    await execAsync(
+      `find ${cloneDir} -type f ${extsToKeepFlags} ${licenseFileFlags} -delete`
+    );
 
     // Execute a bash command to delete all empty directories in the repository.
     await execAsync(`find ${cloneDir} -type d -empty -delete`);
