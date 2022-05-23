@@ -90,9 +90,7 @@ async function searchRepos(
   const pageSize = Math.min(maxRepoCount, GITHUB_SEARCH_MAX_PAGE_SIZE);
   const pageCount = Math.ceil(maxRepoCount / pageSize);
 
-  logger.info(
-    `Searching for ${language} repos (sorted ${order} by ${sort})...`
-  );
+  logger.info(`Searching for '${language}' repos...`);
   if (pageCount > 1) {
     logger.info(
       `${pageCount} requests are required to retrieve ${maxRepoCount} repos.`
@@ -102,9 +100,7 @@ async function searchRepos(
   // Paginated requests to retrieve the desired number of repos.
   const itemsFromAllPages = [];
   for (let page = 1; page <= pageCount; page++) {
-    logger.debug(
-      `Searching for ${language} repos (sorted ${order} by ${sort}) - Page ${page}...`
-    );
+    logger.debug(`Searching for '${language}' repos [${page}/${pageCount}]...`);
     const {
       data: { items },
     } = await octokit.rest.search.repos({
@@ -250,12 +246,12 @@ to false, other code files that this tool supports will be kept.`.trim(),
       "max-repo-count": {
         type: "number",
         require: true,
-        describe:
-          "The maximum number of repositories per programming language to download",
+        describe: `The maximum number of repositories to download for each
+programming language.`,
       },
       sort: {
         require: true,
-        default: "forks" as Sort,
+        default: "stars" as Sort,
         describe: "The field to sort the repos by",
         choices: SortOptions,
       },
