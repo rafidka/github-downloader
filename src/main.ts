@@ -45,22 +45,23 @@ const LANGUAGES = [
 ] as const;
 type Language = typeof LANGUAGES[number];
 
-const LANGUAGE_FILE_EXTENSION_MAP = {
-  c: "c",
-  cpp: "cpp",
-  csharp: "cs",
-  css: "css",
-  go: "go",
-  html: "html",
-  java: "java",
-  js: "js",
-  perl: "pl",
-  php: "php",
-  python: "py",
-  rust: "rs",
-  sql: "sql",
-  ts: "ts",
-} as const;
+const LANGUAGE_FILE_EXTENSION_MAP: { [language: string]: Readonly<string[]> } =
+  {
+    c: ["c", "h"],
+    cpp: ["C", "cc", "cpp", "cxx", "h", "hpp"],
+    csharp: ["cs"],
+    css: ["css"],
+    go: ["go"],
+    html: ["html"],
+    java: ["java"],
+    js: ["js"],
+    perl: ["pl"],
+    php: ["php"],
+    python: ["py"],
+    rust: ["rs"],
+    sql: ["sql"],
+    ts: ["ts"],
+  } as const;
 
 const SortOptions = ["stars", "forks"] as const;
 type Sort = typeof SortOptions[number];
@@ -177,7 +178,7 @@ async function cloneRepo(
   }
 
   // Finds the extensions of the languages that we would like to keep.
-  const extsToKeep = languagesToKeep.map(
+  const extsToKeep = languagesToKeep.flatMap(
     (lang) => LANGUAGE_FILE_EXTENSION_MAP[lang]
   );
 
