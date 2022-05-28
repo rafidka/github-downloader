@@ -11,6 +11,8 @@ import {
   setLogLevel,
 } from "./config";
 import * as cliProgress from "cli-progress";
+import { SearchRepoResultItem, SimpleUser } from "./types";
+
 
 const execAsync = promisify(exec);
 
@@ -87,7 +89,7 @@ async function searchRepos(
   maxRepoCount: number,
   sort: Sort = "forks",
   order: Order = "desc"
-) {
+): Promise<SearchRepoResultItem[]> {
   const pageSize = Math.min(maxRepoCount, GITHUB_SEARCH_MAX_PAGE_SIZE);
   const pageCount = Math.ceil(maxRepoCount / pageSize);
 
@@ -139,13 +141,7 @@ async function searchRepos(
  * after cloning the repository during the clean up phase.
  */
 async function cloneRepo(
-  repo: {
-    owner: {
-      login: string;
-    };
-    name: string;
-    html_url: string;
-  },
+  repo: SearchRepoResultItem & { owner: SimpleUser }, // We require the owner.
   reposDir: string,
   language: Language,
   languagesToKeep: Readonly<Language[]>
