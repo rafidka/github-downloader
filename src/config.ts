@@ -13,7 +13,7 @@ function createFileLogger(level: LoggerLevel): winston.Logger {
   return winston.createLogger({
     level: level,
     format: winston.format.combine(
-      winston.format.timestamp(),
+      winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
       winston.format.printf(({ timestamp, level, message }) => {
         return `${timestamp} [${level}] ${message}`;
       })
@@ -50,7 +50,7 @@ const fileOnlyLogger = LOGGER_LEVELS.reduce((logger, level) => {
 const consoleOnlyLogger = winston.createLogger({
   level: "info",
   format: winston.format.combine(
-    winston.format.timestamp(),
+    winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
     winston.format.colorize(),
     winston.format.printf(({ timestamp, level, message }) => {
       return `${timestamp} [${level}] ${message}`;
