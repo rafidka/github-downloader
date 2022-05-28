@@ -16,7 +16,12 @@ import { SearchRepoResultItem, SimpleUser } from "./types";
 
 const GIT_CLONE_EXPECTED_STDERR_REGEX = /^Cloning into '.+'...$/;
 
-const execAsync = promisify(exec);
+const execPromisified = promisify(exec);
+
+async function execAsync(command: string) {
+  logger.debug(`Executing command: ${command}`);
+  return await execPromisified(command);
+}
 
 if (!process.env.GITHUB_TOKEN) {
   throw Error("GITHUB_TOKEN is not set");
@@ -169,29 +174,31 @@ async function cloneRepo(
   // directory.
   const {
     owner: { login: ownerLogin },
-    name,
-    html_url,
-    full_name,
+    name: repoName,
+    full_name: repoFullName,
   } = repo;
-  const cloneDir = joinPath(reposDir, ownerLogin, name);
+  const cloneDir = joinPath(reposDir, ownerLogin, repoName);
 
   // Cloning repositories is slow, so we only do it if the repository
   // doesn't already exist.
   if (fs.existsSync(cloneDir)) {
-    logger.info(`Skipping ${ownerLogin}/${name} as it is already cloned.`);
+    logger.info(`Skipping ${ownerLogin}/${repoName} as it is already cloned.`);
     return;
   }
 
-  logger.info(`[lang: ${language}] Cloning ${full_name}...`);
+  logger.info(`[lang: ${language}] Cloning ${repoFullName}...`);
 
   // To reduce download time, we clone with the `--depth` flag set to 1.
   try {
-    const res = await execAsync(`git clone --depth 1 ${html_url} ${cloneDir}`);
+    //const res = await execAsync(`git clone --depth 1 ${gitUrl} ${cloneDir}`);
+    const res = await execAsync(
+      `gh repo clone ${ownerLogin}/${repoName} ${cloneDir} -- --depth 1`
+    );
     if (
       res.stdout.trim() !== "" ||
       !GIT_CLONE_EXPECTED_STDERR_REGEX.test(res.stderr.trim())
     ) {
-      logger.warn(`Unexpected stdout or stderr while cloning ${full_name}:
+      logger.warn(`Unexpected stdout or stderr while cloning ${repoFullName}:
 stdout:
 ${res.stdout}
 
@@ -199,7 +206,7 @@ stderr:
 ${res.stderr}`);
     }
   } catch (err) {
-    logger.error(`Failed to clone ${repo.name}: ${err}`);
+    logger.error(`Failed to clone ${repoName}: ${err}`);
     return;
   }
 
@@ -234,7 +241,7 @@ ${res.stderr}`);
     // Execute a bash command to delete all empty directories in the repository.
     await execAsync(`find ${cloneDir} -type d -empty -delete`);
   } catch (err) {
-    logger.warn(`Failed to clean up ${repo.name}: ${err}
+    logger.warn(`Failed to clean up ${repoName}: ${err}
 Notice that the repository was successfully cloned, but it will likely contain
 other files that are not code files. You can delete these files manually.
 `);
