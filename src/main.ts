@@ -13,8 +13,16 @@ import {
 } from "./config";
 import * as cliProgress from "cli-progress";
 import { SearchRepoResultItem, SimpleUser } from "./types";
+import retry from "async-retry";
 
 const GIT_CLONE_EXPECTED_STDERR_REGEX = /^Cloning into '.+'...$/;
+
+const GIT_CLONE_RETRY_OPTS = {
+  retries: 10,
+  factor: 2, // exponential backoff
+  minTimeout: 1000, // 1 second.
+  maxTimeout: 5 * 60 * 1000, // 5 minutes
+};
 
 const execPromisified = promisify(exec);
 
@@ -148,68 +156,71 @@ async function searchRepos(
 }
 
 /**
- * Clones a repository to the given directory.
- *
- * This function is not simply a wrapper around `git clone`, but also cleans
- * non-code files from the repository after cloning. The list of programming
- * languages to consider is specified by the {@link languagesToKeep} parameter.
- *
- * Notice that in addition to keeping the code files, this function also keeps
- * the README and LICENSE files.
+ * Executes a git command to clone the given repository.
  *
  * @param repo The repository to clone.
- * @param reposDir The directory to clone the repository to.
- * @param language The programming language of the repository.
- * @param languagesToKeep An array containing the programming languages to keep
- * after cloning the repository during the clean up phase.
+ * @param cloneDir The directory to clone the repository into.
  */
-async function cloneRepo(
+async function gitClone(
   repo: SearchRepoResultItem & { owner: SimpleUser }, // We require the owner.
-  reposDir: string,
-  language: Language,
-  languagesToKeep: Readonly<Language[]>
+  cloneDir: string
 ): Promise<void> {
-  // Execute a `git clone` on the repository. We clone the repo in a
-  // sub-directory with the name of the repository under the given repository
-  // directory.
-  const {
-    owner: { login: ownerLogin },
-    name: repoName,
-    full_name: repoFullName,
-  } = repo;
-  const cloneDir = joinPath(reposDir, ownerLogin, repoName);
-
-  // Cloning repositories is slow, so we only do it if the repository
-  // doesn't already exist.
-  if (fs.existsSync(cloneDir)) {
-    logger.info(`Skipping ${ownerLogin}/${repoName} as it is already cloned.`);
-    return;
-  }
-
-  logger.info(`[lang: ${language}] Cloning ${repoFullName}...`);
+  const { full_name: repoFullName, html_url: repoHtmlUrl } = repo;
 
   // To reduce download time, we clone with the `--depth` flag set to 1.
-  try {
-    const res = await execAsync(
-      `gh repo clone ${ownerLogin}/${repoName} ${cloneDir} -- --depth 1`
-    );
-    if (
-      res.stdout.trim() !== "" ||
-      !GIT_CLONE_EXPECTED_STDERR_REGEX.test(res.stderr.trim())
-    ) {
-      logger.warn(`Unexpected stdout or stderr while cloning ${repoFullName}:
+  const res = await execAsync(`git clone --depth 1 ${repoHtmlUrl} ${cloneDir}`);
+
+  // Check for unexpected output that could potentially indicate an error.
+  if (
+    res.stdout.trim() !== "" ||
+    !GIT_CLONE_EXPECTED_STDERR_REGEX.test(res.stderr.trim())
+  ) {
+    logger.warn(`Unexpected stdout or stderr while cloning ${repoFullName}:
 stdout:
 ${res.stdout}
 
 stderr:
 ${res.stderr}`);
-    }
+  }
+}
+
+/**
+ * Same as {@link gitClone}, but retries the operation if it fails.
+ *
+ * @param repo The repository to clone.
+ * @param cloneDir The directory to clone the repository into.
+ */
+async function gitCloneWithRetries(
+  repo: SearchRepoResultItem & { owner: SimpleUser }, // We require the owner.
+  cloneDir: string
+) {
+  const { name: repoName } = repo;
+  try {
+    await retry(async (_bail, attempt) => {
+      try {
+        await gitClone(repo, cloneDir);
+      } catch (err) {
+        logger.warn(`Attempt ${attempt} to clone ${repoName} failed: ${err}`);
+        throw err;
+      }
+    }, GIT_CLONE_RETRY_OPTS);
   } catch (err) {
     logger.error(`Failed to clone ${repoName}: ${err}`);
     // Rethrow the error so the promise is rejected.
     throw err;
   }
+}
 
+/**
+ * Removes non-code files except LICENSE or README files from a repository.
+ *
+ * @param cloneDir The directory where the repository was cloned.
+ * @param languagesToKeep A list of programming languages to keep code for.
+ */
+async function cleanUpRepo(
+  cloneDir: string,
+  languagesToKeep: Readonly<Language[]>
+): Promise<void> {
   // Finds the extensions of the languages that we would like to keep.
   const extsToKeep = languagesToKeep.flatMap(
     (lang) => LANGUAGE_FILE_EXTENSION_MAP[lang]
@@ -241,11 +252,57 @@ ${res.stderr}`);
     // Execute a bash command to delete all empty directories in the repository.
     await execAsync(`find ${cloneDir} -type d -empty -delete`);
   } catch (err) {
-    logger.warn(`Failed to clean up ${repoName}: ${err}
+    logger.warn(`Failed to clean up ${cloneDir}: ${err}
 Notice that the repository was successfully cloned, but it will likely contain
-other files that are not code files. You can delete these files manually.
+other files that are not code files. You can delete those files manually.
 `);
   }
+}
+
+/**
+ * Clones a repository to the given directory.
+ *
+ * This function is not simply a wrapper around `git clone`, but also cleans
+ * non-code files from the repository after cloning. The list of programming
+ * languages to consider is specified by the {@link languagesToKeep} parameter.
+ *
+ * Notice that in addition to keeping the code files, this function also keeps
+ * the README and LICENSE files.
+ *
+ * @param repo The repository to clone.
+ * @param reposDir The directory to clone the repository to.
+ * @param language The programming language of the repository.
+ * @param languagesToKeep An array containing the programming languages to keep
+ * after cloning the repository during the clean up phase.
+ */
+async function cloneRepo(
+  repo: SearchRepoResultItem & { owner: SimpleUser }, // We require the owner.
+  reposDir: string,
+  language: Language,
+  languagesToKeep: Readonly<Language[]>
+): Promise<void> {
+  const {
+    owner: { login: ownerLogin },
+    name: repoName,
+    full_name: repoFullName,
+  } = repo;
+  const cloneDir = joinPath(reposDir, ownerLogin, repoName);
+
+  // Cloning repositories is slow, so we only do it if the repository doesn't
+  // already exist.
+  if (fs.existsSync(cloneDir)) {
+    logger.info(`Skipping ${ownerLogin}/${repoName} as it is already cloned.`);
+    return;
+  }
+
+  logger.info(`[lang: ${language}] Cloning ${repoFullName}...`);
+
+  // First, clone the repository.
+  await gitCloneWithRetries(repo, cloneDir);
+
+  // Then, remove non-code files except LICENSE or README files from the cloned
+  // repository.
+  await cleanUpRepo(cloneDir, languagesToKeep);
 }
 
 function parseArgs(): {
