@@ -190,7 +190,6 @@ async function cloneRepo(
 
   // To reduce download time, we clone with the `--depth` flag set to 1.
   try {
-    //const res = await execAsync(`git clone --depth 1 ${gitUrl} ${cloneDir}`);
     const res = await execAsync(
       `gh repo clone ${ownerLogin}/${repoName} ${cloneDir} -- --depth 1`
     );
@@ -207,7 +206,8 @@ ${res.stderr}`);
     }
   } catch (err) {
     logger.error(`Failed to clone ${repoName}: ${err}`);
-    return;
+    // Rethrow the error so the promise is rejected.
+    throw err;
   }
 
   // Finds the extensions of the languages that we would like to keep.
