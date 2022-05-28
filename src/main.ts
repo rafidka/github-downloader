@@ -1,6 +1,7 @@
 import { Octokit } from "octokit";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { join as joinPath } from "path";
 import * as fs from "fs";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
@@ -13,6 +14,7 @@ import {
 import * as cliProgress from "cli-progress";
 import { SearchRepoResultItem, SimpleUser } from "./types";
 
+const GIT_CLONE_EXPECTED_STDERR_REGEX = /^Cloning into '.+'...$/;
 
 const execAsync = promisify(exec);
 
@@ -153,8 +155,9 @@ async function cloneRepo(
     owner: { login: ownerLogin },
     name,
     html_url,
+    full_name,
   } = repo;
-  const cloneDir = `${reposDir}/${ownerLogin}/${name}`;
+  const cloneDir = joinPath(reposDir, ownerLogin, name);
 
   // Cloning repositories is slow, so we only do it if the repository
   // doesn't already exist.
@@ -163,11 +166,22 @@ async function cloneRepo(
     return;
   }
 
-  logger.info(`[lang: ${language}] Cloning ${repo.name}...`);
+  logger.info(`[lang: ${language}] Cloning ${full_name}...`);
 
   // To reduce download time, we clone with the `--depth` flag set to 1.
   try {
-    await execAsync(`git clone --depth 1 ${html_url} ${cloneDir}`);
+    const res = await execAsync(`git clone --depth 1 ${html_url} ${cloneDir}`);
+    if (
+      res.stdout.trim() !== "" ||
+      !GIT_CLONE_EXPECTED_STDERR_REGEX.test(res.stderr.trim())
+    ) {
+      logger.warn(`Unexpected stdout or stderr while cloning ${full_name}:
+stdout:
+${res.stdout}
+
+stderr:
+${res.stderr}`);
+    }
   } catch (err) {
     logger.error(`Failed to clone ${repo.name}: ${err}`);
     return;
