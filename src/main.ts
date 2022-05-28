@@ -30,8 +30,8 @@ if (!process.env.GITHUB_TOKEN) {
 const octokit = new Octokit({
   auth: process.env.GITHUB_TOKEN,
   request: {
-    retries: 10,
-    retryAfter: 5,
+    retries: 15,
+    retryAfter: 20,
   },
   // TODO This doesn't seem to work. I experience noticeable delays during the
   // search phase which clearly indicate throttling, but I don't see any log.
