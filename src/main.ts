@@ -1,5 +1,5 @@
 import { Octokit } from "octokit";
-import { exec } from "child_process";
+import { exec, ExecOptions } from "child_process";
 import { promisify } from "util";
 import { join as joinPath } from "path";
 import * as fs from "fs";
@@ -24,11 +24,17 @@ const GIT_CLONE_RETRY_OPTS = {
   maxTimeout: 5 * 60 * 1000, // 5 minutes
 };
 
+const rmAsync = promisify(fs.rm);
+
 const execPromisified = promisify(exec);
 
-async function execAsync(command: string) {
+async function execAsync(command: string, options?: ExecOptions) {
   logger.debug(`Executing command: ${command}`);
-  return await execPromisified(command);
+  if (options) {
+    return await execPromisified(command, options);
+  } else {
+    return await execPromisified(command);
+  }
 }
 
 if (!process.env.GITHUB_TOKEN) {
@@ -167,8 +173,29 @@ async function gitClone(
 ): Promise<void> {
   const { full_name: repoFullName, html_url: repoHtmlUrl } = repo;
 
+  // Removes the clone directory if it exists.
+  // TODO We are not supposed to need this, since cloneRepo() function checks if
+  // the directory exists, and if it does, it doesn't process to clone.
+  // However, experimentally, I experienced some errors with `git clone` related
+  // to the directory already existing.
+  rmAsync(cloneDir);
+
   // To reduce download time, we clone with the `--depth` flag set to 1.
-  const res = await execAsync(`git clone --depth 1 ${repoHtmlUrl} ${cloneDir}`);
+  const res = await execAsync(
+    `git clone --depth 1 ${repoHtmlUrl} ${cloneDir}`,
+    {
+      env: {
+        // We need to set the GIT_TERMINAL_PROMPT variable to avoid credentials
+        // prompt from git, which requires interactivity. I presume in this
+        // case, the git command will fail and will be retried later. Notice
+        // that for a clone, we don't need to have credentials, but it seems
+        // that GitHub asks for them in case of excessive requests from the same
+        // IP address. Hence, we just need to fail and let the retry mechanism
+        // handle it.
+        GIT_TERMINAL_PROMPT: "0",
+      },
+    }
+  );
 
   // Check for unexpected output that could potentially indicate an error.
   if (
