@@ -174,11 +174,16 @@ async function gitClone(
   const { full_name: repoFullName, html_url: repoHtmlUrl } = repo;
 
   // Removes the clone directory if it exists.
-  // TODO We are not supposed to need this, since cloneRepo() function checks if
-  // the directory exists, and if it does, it doesn't process to clone.
-  // However, experimentally, I experienced some errors with `git clone` related
-  // to the directory already existing.
-  rmAsync(cloneDir);
+  if (fs.existsSync(cloneDir)) {
+    // TODO We are not supposed to need this, since cloneRepo() function checks if
+    // the directory exists, and if it does, it doesn't process to clone.
+    // However, experimentally, I experienced some errors with `git clone` related
+    // to the directory already existing.
+    await rmAsync(cloneDir, {
+      recursive: true,
+      force: true,
+    });
+  }
 
   // To reduce download time, we clone with the `--depth` flag set to 1.
   const res = await execAsync(
