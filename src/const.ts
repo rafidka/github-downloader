@@ -76,3 +76,9 @@ export const GITHUB_SEARCH_MAX_PAGE_SIZE = 100;
  * The maximum number of repositories that can be searched for.
  */
 export const GITHUB_SEARCH_MAX_RESULT_COUNT = 1000;
+
+/**
+ * Not sure when is the exact date of launch, so just using the beginning of
+ * the month.
+ */
+export const GITHUB_LAUNCH_DATE = new Date("2008-04-01T00:00:00Z");
