@@ -19,6 +19,7 @@ function parseArgs(): {
   languages: Readonly<Language[]>;
   keepOnlyMainLanguage: boolean;
   minStars: number;
+  maxRepoCount?: number;
 } {
   // Create yargs with a parameter for the repository directory.
   const argv = yargs(hideBin(process.argv))
@@ -66,6 +67,11 @@ to false, other code files that this tool supports will be kept.`.trim(),
         require: true,
         describe: `The minimum number of stars for the repositories to download.`,
       },
+      "max-repo-count": {
+        type: "number",
+        require: false,
+        describe: `The minimum number of stars for the repositories to download.`,
+      },
     })
     .parseSync();
 
@@ -80,6 +86,7 @@ async function main() {
     languages,
     keepOnlyMainLanguage,
     minStars,
+    maxRepoCount,
   } = parseArgs();
 
   if (verbose) {
@@ -126,8 +133,6 @@ async function main() {
         // The purpose of this check is mainly to prevent a TypeScript compiler
         // error; I don't know why a repository would not have an owner.
         logger.warn(`Skipping ${repo.name} as it is not owned by a user.`);
-        //clonedReposBar.setTotal(partition.totalCount);
-        //clonedReposBar.increment();
         continue;
       }
 
@@ -143,6 +148,11 @@ async function main() {
     logger.info(
       `Finished cloning ${partition.countProgress}/${partition.totalCount} repositories.`
     );
+
+    if (maxRepoCount && partition.countProgress >= maxRepoCount) {
+      logger.info(`Reached max repo count ${maxRepoCount}.`);
+      break;
+    }
   }
 
   logger.info("");
