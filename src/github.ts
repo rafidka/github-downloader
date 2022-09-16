@@ -211,6 +211,80 @@ interface SearchReposPartition {
 }
 
 /**
+ * Helper function for {@link partitionRepoSearchQuery}. See that function for
+ * more information.
+ */
+async function partitionRepoSearchQueryHelper(
+  query: RepoSearchQuery,
+  maxRepoCountPerPartition: number,
+  rootCall = true
+): Promise<SearchReposPartition[]> {
+  // Make sure we have valid creation min and max dates.
+  if (!query.created?.minValue || !query.created?.maxValue) {
+    throw new Error(
+      "partitionRepoSearchQuery requires a valid creation start date."
+    );
+  }
+  const { minValue: startDate, maxValue: endDate } = query.created;
+
+  const count = await findRepoCount(query);
+  if (count <= maxRepoCountPerPartition) {
+    logger.debug(`Query contains ${count} repos; no need to partition.`);
+    return [{ count, startDate, endDate }];
+  }
+
+  if (rootCall) {
+    // Calculate the total number of bisections we need to do.
+    const numBisections = Math.ceil(
+      Math.log2(count / maxRepoCountPerPartition)
+    );
+
+    // Calculate the total number of requests to GitHub API we need to make.
+    const numRequests = 2 ** (numBisections + 1) + 1;
+
+    // Based on GitHub's max of 30 requests per minute, calculate the total
+    // time required to finish partitioning.
+    const totalMinutes = Math.ceil(numRequests / 30);
+
+    logger.info(
+      `There are ${count} matches for this query. To be able to retrieve all
+      matches, the query needs to be partitioned. This operation will take
+      up to ${totalMinutes} minutes.
+      `
+    );
+  }
+
+  logger.debug(`Query contains ${count} repositories. Partitioning...`);
+  const midDate = new Date(
+    startDate.getTime() + (endDate.getTime() - startDate.getTime()) / 2
+  );
+  const leftPartition = await partitionRepoSearchQueryHelper(
+    {
+      ...query,
+      created: {
+        ...query.created,
+        maxValue: midDate,
+      },
+    },
+    maxRepoCountPerPartition,
+    false
+  );
+  const rightPartition = await partitionRepoSearchQueryHelper(
+    {
+      ...query,
+      created: {
+        ...query.created,
+        minValue: midDate,
+      },
+    },
+    maxRepoCountPerPartition,
+    false
+  );
+
+  return [...leftPartition, ...rightPartition];
+}
+
+/**
  * Given a repository search query with valid creation date range, this function
  * partitions, if necessary, the query into multiple queries with smaller date
  * ranges such that each query returns at most `maxRepoCountInPartition` results.
@@ -225,44 +299,11 @@ async function partitionRepoSearchQuery(
   query: RepoSearchQuery,
   maxRepoCountPerPartition: number
 ): Promise<SearchReposPartition[]> {
-  // Make sure we have valid creation min and max dates.
-  if (!query.created?.minValue || !query.created?.maxValue) {
-    throw new Error(
-      "partitionRepoSearchQuery requires a valid creation start date."
-    );
-  }
-  const { minValue: startDate, maxValue: endDate } = query.created;
-
-  const count = await findRepoCount(query);
-  if (count <= maxRepoCountPerPartition) {
-    return [{ count, startDate, endDate }];
-  }
-
-  const midDate = new Date(
-    startDate.getTime() + (endDate.getTime() - startDate.getTime()) / 2
+  return await partitionRepoSearchQueryHelper(
+    query,
+    maxRepoCountPerPartition,
+    true
   );
-  const leftPartition = await partitionRepoSearchQuery(
-    {
-      ...query,
-      created: {
-        ...query.created,
-        maxValue: midDate,
-      },
-    },
-    maxRepoCountPerPartition
-  );
-  const rightPartition = await partitionRepoSearchQuery(
-    {
-      ...query,
-      created: {
-        ...query.created,
-        minValue: midDate,
-      },
-    },
-    maxRepoCountPerPartition
-  );
-
-  return [...leftPartition, ...rightPartition];
 }
 
 interface SearchReposResultPartition {
@@ -292,7 +333,6 @@ interface SearchReposResultPartition {
 export async function* searchRepos(
   query: RepoSearchQuery
 ): AsyncGenerator<SearchReposResultPartition> {
-  logger.info(`Partitioning search query to work around GitHub's API limit.`);
   const partitions = await partitionRepoSearchQuery(
     query,
     GITHUB_SEARCH_MAX_PAGE_SIZE
